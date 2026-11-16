@@ -250,36 +250,7 @@ $('mp4').onclick=async()=>{
 window.addEventListener('pagehide',()=>{stopListening();if(busy)cancelRequested=true;});
 sync();render();
 </script>
-<!-- 放在原 index.html 的 <style>
-/* 機構副標：與標題並排，小螢幕必要時在欄位內換行。 */
-header{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
-header h1{margin:0;white-space:nowrap}
-header .organization-subtitle{display:block;min-width:0;margin:0;color:#526b5d;font-size:13px;font-weight:500;line-height:1.4;letter-spacing:.3px;overflow-wrap:anywhere}
-@media(max-width:800px){header{gap:8px}header .organization-subtitle{font-size:10px;letter-spacing:0}}
-</style>
-<script>
-(() => {
-  'use strict';
-  // 僅為基本操作限制，不能真正隱藏原始碼或防止本機修改。
-  document.addEventListener('contextmenu', event => {
-    event.preventDefault();
-  }, {capture:true});
-  document.addEventListener('keydown', event => {
-    const key=event.key.toLowerCase();
-    const command=event.ctrlKey||event.metaKey;
-    const source=command&&key==='u';
-    const save=command&&key==='s';
-    const chromium=command&&event.shiftKey&&['i','j','c'].includes(key);
-    const safari=event.metaKey&&event.altKey&&['i','j','c','u'].includes(key);
-    if(key==='f12'||source||save||chromium||safari){
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  }, {capture:true});
-})();
-</script>
-
-</body> 前；保留原本全部程式碼。 -->
+<!-- 已整合背景取景與即時照片功能。 -->
 <style>
 /* 固定精簡標題與預覽，只捲動設定區。 */
 html{height:100%;overflow:hidden}
@@ -669,6 +640,84 @@ header .organization-subtitle{display:block;min-width:0;margin:0;color:#526b5d;f
       event.stopImmediatePropagation();
     }
   }, {capture:true});
+})();
+</script>
+
+<style>
+/* 頁首以外的可用高度，由預覽與設定區上下平均分配。 */
+.layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+.preview {
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  padding: 8px 10px;
+}
+.preview-bar {
+  flex: none;
+  margin: 0;
+}
+#previewStage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.preview canvas {
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+}
+.preview .edit-tools {
+  flex: none;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+#controls {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+</style>
+<script>
+(() => {
+  'use strict';
+  // 用獨立容器測量剩餘空間，維持畫布 4:5 並確保觸控座標準確。
+  const preview = document.querySelector('.preview');
+  const imageCanvas = document.getElementById('canvas');
+  const stage = document.createElement('div');
+  stage.id = 'previewStage';
+  preview.insertBefore(stage, imageCanvas);
+  stage.append(imageCanvas);
+
+  function fitPreview() {
+    const width = Math.min(stage.clientWidth, stage.clientHeight * 1080 / 1350);
+    if (width <= 0) return;
+    imageCanvas.style.width = width + 'px';
+    imageCanvas.style.height = width * 1350 / 1080 + 'px';
+  }
+
+  if ('ResizeObserver' in window) {
+    const observer = new ResizeObserver(fitPreview);
+    observer.observe(stage);
+  }
+  window.addEventListener('resize', fitPreview);
+  fitPreview();
 })();
 </script>
 
