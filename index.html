@@ -23,7 +23,7 @@
 <section class="panel"><h2>01　選一片晨間風景</h2>
 <label class="field" for="category">照片風格</label><select id="category"></select>
 <div class="row" style="margin-top:12px"><button id="newPhoto">↻ 換張風景</button><label class="upload" for="upload">＋ 上傳照片</label><input id="upload" type="file" accept="image/*" hidden></div>
-<p class="hint">12 類風格，每類多張精選照片。上傳照片僅在你的瀏覽器處理。</p>
+<p class="hint">30 類風格，依主題即時搜尋。上傳照片僅在你的瀏覽器處理。</p>
 </section>
 <section class="panel"><div class="row"><h2>02　寫下今日祝福</h2><button id="newText" class="small">↻ 換句祝福</button></div>
 <label class="field" for="title">主標題</label><input id="title" type="text" maxlength="80" value="早安，願你心有暖陽">
@@ -299,7 +299,7 @@ body>footer{display:none}
   preview.querySelector('.preview-bar span').textContent = '固定預覽';
   const photoPanel = $('category').closest('.panel');
   photoPanel.querySelector('.hint').textContent =
-    '開啟頁面或換張照片時，即時搜尋 CC0／公有領域照片。也可自行上傳。';
+    '30 類風格，依各類專屬關鍵字即時搜尋 CC0／公有領域素材。也可自行上傳。';
   photoPanel.append($('credit'));
   const licenseNote = document.createElement('p');
   licenseNote.className = 'hint';
@@ -507,14 +507,264 @@ body>footer{display:none}
   };
 
   /* 5. 即時照片搜尋：Commons API + 授權篩選 + 排除最近使用照片。 */
+  // 每類使用多組相近主題詞；只在同類主題內重試，不退回過度寬泛的單字。
   const liveCategories = [
-    ['山林晨霧','mist forest landscape'], ['蔚藍海岸','beach'],
-    ['溫柔花語','flowers garden'], ['靜謐湖泊','lake landscape'],
-    ['綠意森林','forest'], ['咖啡時光','coffee cup'],
-    ['壯闊山岳','mountain landscape'], ['田園綠野','meadow'],
-    ['星空心願','starry sky milky way'], ['城市漫步','city sunrise'],
-    ['靜心沙漠','desert dunes'], ['日光雲影','sunrise clouds landscape']
-  ];
+  [
+    "花卉植物",
+    [
+      "flowers garden",
+      "flower blossom",
+      "botanical flowers"
+    ]
+  ],
+  [
+    "山水風景",
+    [
+      "mountain river landscape",
+      "mountain lake landscape",
+      "mountain waterfall"
+    ]
+  ],
+  [
+    "天空雲彩",
+    [
+      "sky clouds sunrise",
+      "cloudscape",
+      "sunrise sky"
+    ]
+  ],
+  [
+    "可愛動物",
+    [
+      "kitten",
+      "puppy",
+      "rabbit"
+    ]
+  ],
+  [
+    "森林自然",
+    [
+      "forest sunlight",
+      "forest woodland",
+      "forest landscape"
+    ]
+  ],
+  [
+    "早餐美食",
+    [
+      "breakfast bread",
+      "breakfast food",
+      "bread coffee"
+    ]
+  ],
+  [
+    "茶飲文化",
+    [
+      "Chinese tea",
+      "tea ceremony",
+      "teapot tea"
+    ]
+  ],
+  [
+    "田園鄉村",
+    [
+      "rural farmland",
+      "village countryside",
+      "meadow farm"
+    ]
+  ],
+  [
+    "海洋海邊",
+    [
+      "beach ocean",
+      "seascape",
+      "coast sea"
+    ]
+  ],
+  [
+    "中國風水墨",
+    [
+      "Chinese ink painting",
+      "Chinese landscape painting",
+      "ink wash painting"
+    ],
+    "搜尋中國山水、水墨與古典畫作；保留作品來源與授權連結。"
+  ],
+  [
+    "日式清新",
+    [
+      "Japan cherry blossoms",
+      "Japanese garden",
+      "Japan bamboo"
+    ],
+    "以日本庭園、櫻花與竹林呈現清新氛圍。"
+  ],
+  [
+    "歐式浪漫",
+    [
+      "European rose garden",
+      "Venice canal",
+      "Paris garden"
+    ]
+  ],
+  [
+    "勵志語錄",
+    [
+      "sunrise mountain summit",
+      "road sunrise",
+      "mountain path"
+    ],
+    "搜尋日出、山頂、道路等勵志背景；語錄可在下方文字欄輸入或重新產生。"
+  ],
+  [
+    "溫馨問候",
+    [
+      "flowers sunlight",
+      "morning garden",
+      "sunlight window"
+    ],
+    "搜尋晨光、花園等溫暖背景；問候文字由下方文字欄編輯。"
+  ],
+  [
+    "節慶祝福",
+    [
+      "lantern festival",
+      "Chinese New Year lantern",
+      "festive fireworks",
+      "Christmas decorations"
+    ],
+    "搜尋燈籠、煙火等節慶素材；祝福內容可自行輸入。"
+  ],
+  [
+    "四季節氣",
+    [
+      "spring blossom",
+      "summer lotus",
+      "autumn leaves landscape",
+      "winter snow landscape"
+    ],
+    "搜尋春花、夏荷、秋葉與冬雪；每次換圖可呈現不同季節。"
+  ],
+  [
+    "宗教祈福",
+    [
+      "Buddhist lotus",
+      "Buddhist temple",
+      "prayer candle",
+      "church stained glass"
+    ]
+  ],
+  [
+    "抽象藝術",
+    [
+      "abstract painting",
+      "abstract geometric art",
+      "abstract texture"
+    ]
+  ],
+  [
+    "插畫手繪",
+    [
+      "botanical illustration",
+      "watercolor illustration",
+      "vintage illustration"
+    ]
+  ],
+  [
+    "極簡質感",
+    [
+      "minimalist still life",
+      "white wall shadow",
+      "minimalist architecture"
+    ]
+  ],
+  [
+    "水果蔬菜",
+    [
+      "fruit vegetables",
+      "fresh fruit",
+      "vegetables"
+    ]
+  ],
+  [
+    "蝴蝶昆蟲",
+    [
+      "butterfly flower",
+      "dragonfly",
+      "ladybird insect"
+    ]
+  ],
+  [
+    "鳥類世界",
+    [
+      "songbird",
+      "kingfisher bird",
+      "bird branch"
+    ]
+  ],
+  [
+    "城市晨景",
+    [
+      "city sunrise",
+      "city dawn",
+      "city morning"
+    ]
+  ],
+  [
+    "古典建築",
+    [
+      "classical architecture",
+      "Chinese traditional architecture",
+      "European historic architecture"
+    ]
+  ],
+  [
+    "湖泊河流",
+    [
+      "lake reflection",
+      "river landscape",
+      "lake morning"
+    ]
+  ],
+  [
+    "星空月亮",
+    [
+      "Milky Way night sky",
+      "full moon sky",
+      "starry sky"
+    ]
+  ],
+  [
+    "童話夢幻",
+    [
+      "fairy tale illustration",
+      "enchanted forest",
+      "fairy illustration"
+    ],
+    "搜尋公有領域童話插畫與夢幻森林，不使用受保護的現代卡通角色。"
+  ],
+  [
+    "書法詩詞",
+    [
+      "Chinese calligraphy",
+      "Chinese poem calligraphy",
+      "Chinese poetry painting"
+    ],
+    "搜尋書法、詩詞與古典畫作影像；自訂詩句仍可在文字欄加入。"
+  ],
+  [
+    "健康養生",
+    [
+      "tai chi park",
+      "herbal tea",
+      "healthy vegetables"
+    ]
+  ]
+];
+  const searchHelp = document.createElement('p');
+  searchHelp.id = 'categorySearchHelp';
+  searchHelp.className = 'hint';
+  $('category').insertAdjacentElement('afterend', searchHelp);
   const historyKey = 'morning-photo-history-v2';
   let recent = [];
   try { const saved = JSON.parse(localStorage.getItem(historyKey) || '[]'); if (Array.isArray(saved)) recent = saved.filter(x=>typeof x==='string').slice(-150); } catch(error) {}
@@ -531,16 +781,23 @@ body>footer{display:none}
     const controller = new AbortController(); request = controller;
     const ticket = ++imageTicket;
     const timer = setTimeout(()=>controller.abort(), 45000);
-    const query = liveCategories[Number($('category').value)][1];
+    const [categoryName, categoryQueries, categoryNote] = liveCategories[Number($('category').value)];
+    searchHelp.textContent = categoryNote || '依「'+categoryName+'」主題即時查詢，僅採用標示 CC0／公有領域的素材。';
+    const queries = [...categoryQueries];
+    // 隨機輪替同類搜尋詞，增加變化，同時保留分類精準度。
+    for (let i=queries.length-1;i>0;i--) {
+      const j=Math.floor(Math.random()*(i+1));
+      [queries[i],queries[j]]=[queries[j],queries[i]];
+    }
     $('newPhoto').disabled = true;
-    status('正在即時搜尋並下載新照片…');
+    status('正在搜尋「'+categoryName+'」的 CC0／公有領域素材…');
     try {
       let chosen = null, image = null;
-      for (let attempt=0; attempt<3 && !image; attempt++) {
+      for (let attempt=0; attempt<queries.length && !image; attempt++) {
         const parameters = new URLSearchParams({
           action:'query', format:'json', origin:'*', generator:'search',
-          gsrsearch:(attempt===2?query.split(' ')[0]:query)+' filetype:bitmap', gsrnamespace:'6', gsrlimit:'50',
-          gsroffset:String(attempt===0?Math.floor(Math.random()*4)*25:0),
+          gsrsearch:queries[attempt]+' filetype:bitmap', gsrnamespace:'6', gsrlimit:'50',
+          gsroffset:String(attempt===0?Math.floor(Math.random()*2)*25:0),
           prop:'imageinfo', iiprop:'url|extmetadata', iiurlwidth:'1600',
           maxage:'0', smaxage:'0'
         });
@@ -576,7 +833,7 @@ body>footer{display:none}
         }
       }
       if (ticket!==imageTicket) return;
-      if (!image) throw Error('這次未找到未使用的 CC0／公有領域照片，請再試一次或換個風格');
+      if (!image) throw Error('「'+categoryName+'」這次未找到符合授權且未使用過的素材，請再試一次或自行上傳');
       background=image;
       recent.push(chosen.title); recent=recent.slice(-150);
       try { localStorage.setItem(historyKey,JSON.stringify(recent)); } catch(error) {}
@@ -585,7 +842,7 @@ body>footer{display:none}
       link.href=info.descriptionurl;
       link.target='_blank';link.rel='noopener';link.textContent='照片來源與授權';
       credit.replaceChildren(document.createTextNode('Wikimedia Commons · '+info.extmetadata.LicenseShortName.value+' · '),link);
-      render();status('新照片已下載，可拖曳背景調整取景。');
+      render();status('「'+categoryName+'」新素材已下載，可拖曳背景調整取景。');
     } catch(error) {
       if(ticket===imageTicket) status(controller.signal.aborted
         ? '照片下載逾時，請重試或自行上傳；目前背景已保留。'
