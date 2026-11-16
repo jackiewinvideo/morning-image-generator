@@ -228,7 +228,7 @@ $('mp4').onclick=async()=>{
  if(busy)return;
  if(!window.MediaRecorder){status('此瀏覽器不支援錄影，請改用新版 Safari／Chrome；仍可下載 PNG。',true);return;}
  const mimes=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus','video/webm'];const mime=mimes.find(m=>MediaRecorder.isTypeSupported(m));if(!mime){status('此瀏覽器沒有可用的錄影格式，請更新瀏覽器。',true);return;}
- stopListening();cancelRequested=false;setBusy(true);$('progress').value=0;let ac,wake=null;
+ stopListening();cancelRequested=false;++imageTicket;setBusy(true);$('progress').value=0;let ac,wake=null;
  try{
   // 在使用者點擊時解鎖 AudioContext，避免 iOS 自動播放限制。
   const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();await ac.resume();
@@ -236,7 +236,7 @@ $('mp4').onclick=async()=>{
   const seconds=Number($('duration').value);status('正在準備配樂與影片工具…');
   const buffer=await musicBuffer(seconds);checkCancelled();
   let engine=null;if(!mime.startsWith('video/mp4')){status('首次需下載影片轉檔工具（數十 MB），請稍候…');engine=await getFFmpeg();checkCancelled();}
-  render();const recording=await recordVideo(ac,buffer,seconds,mime);checkCancelled();
+  if(window.MorningPhotoEditor)await window.MorningPhotoEditor.ready();checkCancelled();render();const recording=await recordVideo(ac,buffer,seconds,mime);checkCancelled();
   let output=recording;
   if(!recording.type.startsWith('video/mp4')){
    if(!engine)engine=await getFFmpeg();status('正在轉換 MP4，請保持此頁在前景…');
@@ -391,7 +391,7 @@ body>footer{display:none}
     ctx.clearRect(0, 0, W, H);
     const image = geometry();
     if (image) {
-      ctx.drawImage(background, image.left, image.top, image.width, image.height);
+      ctx.drawImage(window.MorningPhotoEditor ? window.MorningPhotoEditor.getImage(background) : background, image.left, image.top, image.width, image.height);
     } else {
       const gradient = ctx.createLinearGradient(0, 0, W, H);
       gradient.addColorStop(0, '#9ba68c');
@@ -400,12 +400,12 @@ body>footer{display:none}
       ctx.fillStyle = gradient; ctx.fillRect(0, 0, W, H);
     }
     const shade = ctx.createLinearGradient(0, 0, 0, H);
-    shade.addColorStop(0, 'rgba(7,22,18,.24)');
-    shade.addColorStop(.4, 'rgba(7,22,18,.40)');
-    shade.addColorStop(1, 'rgba(7,22,18,.69)');
+    shade.addColorStop(0, `rgba(7,22,18,${.24*(window.MorningPhotoEditor?.mask ?? 1)})`);
+    shade.addColorStop(.4, `rgba(7,22,18,${.40*(window.MorningPhotoEditor?.mask ?? 1)})`);
+    shade.addColorStop(1, `rgba(7,22,18,${.69*(window.MorningPhotoEditor?.mask ?? 1)})`);
     ctx.fillStyle = shade; ctx.fillRect(0, 0, W, H);
     const glow = ctx.createRadialGradient(W*.15, H*.1, 0, W*.15, H*.1, W);
-    glow.addColorStop(0, 'rgba(255,226,160,.18)');
+    glow.addColorStop(0, `rgba(255,226,160,${.18*(window.MorningPhotoEditor?.mask ?? 1)})`);
     glow.addColorStop(1, 'rgba(255,226,160,0)');
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
     bounds = {};
@@ -718,6 +718,354 @@ header .organization-subtitle{display:block;min-width:0;margin:0;color:#526b5d;f
   }
   window.addEventListener('resize', fitPreview);
   fitPreview();
+})();
+</script>
+
+<style>
+/* 預覽放大；按鈕浮在預覽上，不再佔用照片顯示高度。 */
+.layout{grid-template-rows:minmax(0,75fr) minmax(0,25fr)}
+.preview{padding:0;gap:0;position:relative}
+.preview .preview-bar{position:absolute;top:7px;left:8px;right:8px;z-index:2;pointer-events:none}
+.preview-bar span{background:#fffdf0dc;padding:2px 7px;border-radius:8px}
+#previewStage{height:100%}
+.preview .edit-tools{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:calc(100% - 16px);z-index:2}
+.preview .edit-tools button{background:#fffef4eb;box-shadow:0 2px 10px #0002;backdrop-filter:blur(8px)}
+.preview .edit-tools button[aria-pressed=true]{background:#d9e7d5ef}
+.photo-group{border-top:1px solid var(--line);padding-top:9px;margin-top:12px}
+.photo-group summary{cursor:pointer;font-size:15px;font-weight:650;padding:5px 0}
+.photo-group .field{font-size:13px;margin:9px 0 3px}
+.photo-group .slider{gap:10px}
+.photo-group input[type=range]{min-width:0;min-height:28px}
+.photo-group output{min-width:49px;font-variant-numeric:tabular-nums}
+.hsl-colors{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.hsl-colors button{padding:6px 10px;font-size:13px;border-bottom:4px solid var(--hue)}
+.hsl-colors button[aria-pressed=true]{background:#e4efde;border-color:var(--accent);border-bottom-color:var(--hue)}
+#photoProcess{font-size:12px;min-height:20px;color:var(--muted)}
+#photoProcess[data-error=true]{color:#a33428}
+</style>
+<script>
+(() => {
+  'use strict';
+  /* 影像處理在 Worker 執行，文字與版面留在主執行緒。 */
+  const specs = [
+    ['exposure','曝光',-3,3,.05,'EV'],
+    ['contrast','對比度',-100,100,1,''],
+    ['highlights','亮部／高光',-100,100,1,''],
+    ['shadows','陰影',-100,100,1,''],
+    ['whites','白色色階',-100,100,1,''],
+    ['blacks','黑色色階',-100,100,1,''],
+    ['temperature','色溫｜冷藍 ← → 暖黃',-100,100,1,''],
+    ['tint','色調｜綠 ← → 洋紅',-100,100,1,''],
+    ['saturation','飽和度',-100,100,1,''],
+    ['vibrance','自然飽和度／鮮豔度',-100,100,1,''],
+    ['sharpen','銳利度',0,100,1,''],
+    ['clarity','清晰度',-100,100,1,''],
+    ['texture','紋理',-100,100,1,''],
+    ['dehaze','去朦朧',-100,100,1,''],
+    ['vignette','暗角｜亮角 ← → 暗角',-100,100,1,''],
+    ['denoise','減少雜訊／降噪',0,100,1,'']
+  ];
+  const bands = [
+    ['紅',0,45,'#db4d48'],['橙',30,30,'#e99c39'],
+    ['黃',60,45,'#d7be35'],['綠',120,70,'#5a9f59'],
+    ['青',180,50,'#48b6ac'],['藍',240,60,'#4e81d2'],
+    ['紫',275,40,'#9566c8'],['洋紅',315,45,'#ca64a5']
+  ];
+  const values=Object.fromEntries(specs.map(s=>[s[0],0]));
+  const hsl=bands.map(()=>({h:0,s:0,l:0}));
+  let selectedBand=0;
+  let source=null, base=null, processed=null, sourceId=0, revision=0;
+  let applied=-1, dirty=false, running=false, timer=null, error=null;
+  let worker=null, workerURL=null;
+  const waiters=[];
+
+  function field(spec){
+    const [key,label,min,max,step,unit]=spec;
+    return `<label class="field" for="photo_${key}">${label}</label>
+      <div class="slider"><input id="photo_${key}" type="range" min="${min}" max="${max}" step="${step}" value="0"><output id="photo_${key}_value">0${unit?' '+unit:''}</output></div>`;
+  }
+  const panel=document.createElement('section');
+  panel.id='photoAdjustments';panel.className='panel';
+  panel.innerHTML=`
+    <div class="row"><h2>照片調整</h2><button id="resetPhoto" type="button" class="small">還原全部調色</button></div>
+    <label class="field" for="previewShare">預覽區高度比例</label>
+    <select id="previewShare">
+      <option value="60">60% 預覽／40% 設定</option>
+      <option value="70">70% 預覽／30% 設定</option>
+      <option value="75" selected>75% 預覽／25% 設定</option>
+      <option value="80">80% 預覽／20% 設定</option>
+      <option value="85">85% 預覽／15% 設定</option>
+    </select>
+    <p id="photoProcess" role="status" aria-live="polite">所有照片參數從原圖計算，不會反覆壓縮。</p>
+    <details class="photo-group" open><summary>光影與明暗</summary>${specs.slice(0,6).map(field).join('')}</details>
+    <details class="photo-group"><summary>色彩與氛圍</summary>${specs.slice(6,10).map(field).join('')}</details>
+    <details class="photo-group"><summary>HSL 混色器</summary>
+      <div class="hsl-colors" role="group" aria-label="選擇要調整的顏色">${bands.map((b,i)=>`<button type="button" data-hsl="${i}" style="--hue:${b[3]}" aria-pressed="${i===0}">${b[0]}</button>`).join('')}</div>
+      <label class="field" for="photo_hsl_h">色相</label><div class="slider"><input id="photo_hsl_h" type="range" min="-100" max="100" value="0"><output id="photo_hsl_h_value">0</output></div>
+      <label class="field" for="photo_hsl_s">飽和度</label><div class="slider"><input id="photo_hsl_s" type="range" min="-100" max="100" value="0"><output id="photo_hsl_s_value">0</output></div>
+      <label class="field" for="photo_hsl_l">明度</label><div class="slider"><input id="photo_hsl_l" type="range" min="-100" max="100" value="0"><output id="photo_hsl_l_value">0</output></div>
+      <p class="hint">八組顏色各自保留設定，交界使用柔和混合。色相調整範圍為 ±30°。</p>
+    </details>
+    <details class="photo-group"><summary>細節與質感</summary>${specs.slice(10).map(field).join('')}</details>
+    <details class="photo-group"><summary>文字背景遮罩</summary>
+      <label class="field" for="photo_mask">漸層遮罩強度</label>
+      <div class="slider"><input id="photo_mask" type="range" min="0" max="100" value="70"><output id="photo_mask_value">70%</output></div>
+      <p class="hint">降低可讓照片更明亮；提高有助於白色文字閱讀。此項不會更改文字本身。</p>
+    </details>
+    <p class="hint">拖曳後稍候即更新；下載會等待最後一次調色完成。換照片保留調色設定，可按還原。高光無法還原原檔已遺失的細節；鮮豔度採膚色範圍保護估算。</p>`;
+  const photoPanel=$('category').closest('.panel');
+  photoPanel.insertAdjacentElement('afterend',panel);
+
+  $('previewShare').onchange=()=>{
+    const share=Number($('previewShare').value);
+    document.querySelector('.layout').style.gridTemplateRows=`minmax(0,${share}fr) minmax(0,${100-share}fr)`;
+  };
+  function stateText(text,isError=false){$('photoProcess').textContent=text;$('photoProcess').dataset.error=String(isError);}
+  function syncHSL(){
+    for(const key of ['h','s','l']){
+      $('photo_hsl_'+key).value=hsl[selectedBand][key];
+      $('photo_hsl_'+key+'_value').value=hsl[selectedBand][key];
+    }
+    panel.querySelectorAll('[data-hsl]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.hsl)===selectedBand)));
+  }
+  panel.querySelectorAll('[data-hsl]').forEach(b=>b.onclick=()=>{selectedBand=Number(b.dataset.hsl);syncHSL();});
+  for(const spec of specs){
+    const [key,,,,,unit]=spec;
+    $('photo_'+key).oninput=()=>{
+      values[key]=Number($('photo_'+key).value);
+      $('photo_'+key+'_value').value=(key==='exposure'?values[key].toFixed(2):values[key])+(unit?' '+unit:'');
+      requestUpdate();
+    };
+  }
+  for(const key of ['h','s','l'])$('photo_hsl_'+key).oninput=()=>{
+    hsl[selectedBand][key]=Number($('photo_hsl_'+key).value);syncHSL();requestUpdate();
+  };
+  $('photo_mask').oninput=()=>{
+    api.mask=Number($('photo_mask').value)/100;
+    $('photo_mask_value').value=$('photo_mask').value+'%';render();
+  };
+  $('resetPhoto').onclick=()=>{
+    for(const spec of specs){const key=spec[0];values[key]=0;$('photo_'+key).value=0;$('photo_'+key+'_value').value='0'+(spec[5]?' '+spec[5]:'');}
+    hsl.forEach(b=>{b.h=0;b.s=0;b.l=0;});syncHSL();
+    api.mask=.7;$('photo_mask').value=70;$('photo_mask_value').value='70%';
+    requestUpdate();render();
+  };
+
+  /* ENGINE_START */
+  // 純影像處理函式：可放在 Worker；僅處理照片，不處理文字。
+  function processPhotoJob(job){
+    const {width:w,height:h,settings:p,hsl:bands}=job;
+    const input=new Uint8ClampedArray(job.pixels);
+    if(Object.values(p).every(v=>v===0)&&bands.every(b=>b.h===0&&b.s===0&&b.l===0))return input;
+    const output=new Uint8ClampedArray(input.length);
+    const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+    const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
+    const linear=new Float32Array(256);
+    for(let i=0;i<256;i++){const v=i/255;linear[i]=v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}
+    const gamma=x=>x<=.0031308?12.92*x:1.055*Math.pow(Math.max(0,x),1/2.4)-.055;
+    const exposure=2**p.exposure,contrast=2**(p.contrast/100);
+    const exposed=new Float32Array(256);
+    for(let index=0;index<256;index++)exposed[index]=gamma(linear[index]*exposure);
+    const hi=p.highlights/100,sh=p.shadows/100,wh=p.whites/100,bl=p.blacks/100;
+    const temp=p.temperature/100,tint=p.tint/100,dehaze=p.dehaze/100;
+    const vibrance=p.vibrance/100,saturation=1+p.saturation/100;
+    const centers=[0,30,60,120,180,240,275,315],widths=[45,30,45,70,50,60,40,45];
+    const useHSL=bands.some(b=>b.h||b.s||b.l);
+    const hueChannel=(a,b,t)=>{if(t<0)t++;if(t>1)t--;if(t<1/6)return a+(b-a)*6*t;if(t<.5)return b;if(t<2/3)return a+(b-a)*(2/3-t)*6;return a;};
+    for(let i=0;i<input.length;i+=4){
+      let r=exposed[input[i]],g=exposed[input[i+1]],b=exposed[input[i+2]];
+      const l=clamp(.2126*r+.7152*g+.0722*b);
+      // 依亮度範圍分別處理高光、陰影與白黑端點。
+      const shift=hi*.38*smooth(.4,1,l)+sh*.38*(1-smooth(0,.65,l))+wh*.25*l**4+bl*.25*(1-l)**4;
+      r=(r+shift-.5)*contrast+.5+temp*.12+tint*.06;
+      g=(g+shift-.5)*contrast+.5+temp*.025-tint*.12;
+      b=(b+shift-.5)*contrast+.5-temp*.12+tint*.06;
+      if(dehaze){
+        const transmission=clamp(1-dehaze*.65*clamp(Math.min(r,g,b)/.85),.25,1.65);
+        r=(r-.85)/transmission+.85;g=(g-.85)/transmission+.85;b=(b-.85)/transmission+.85;
+      }
+      r=clamp(r);g=clamp(g);b=clamp(b);
+      if(useHSL||vibrance||p.saturation){
+        const max=Math.max(r,g,b),min=Math.min(r,g,b),delta=max-min;
+        let lum=(max+min)/2,sat=delta===0?0:delta/(1-Math.abs(2*lum-1)),hue=0;
+        if(delta){
+          if(max===r)hue=((g-b)/delta)%6;
+          else if(max===g)hue=(b-r)/delta+2;
+          else hue=(r-g)/delta+4;
+          hue=(hue*60+360)%360;
+        }
+        const skinProtection=hue>12&&hue<55&&sat>.1&&lum>.18?.4:1;
+        if(useHSL&&sat>.005){
+          let sum=0,dh=0,ds=0,dl=0;
+          for(let c=0;c<8;c++){
+            const raw=Math.abs(hue-centers[c]),distance=Math.min(raw,360-raw);
+            if(distance>=widths[c])continue;
+            const weight=.5+.5*Math.cos(Math.PI*distance/widths[c]);
+            sum+=weight;dh+=weight*bands[c].h;ds+=weight*bands[c].s;dl+=weight*bands[c].l;
+          }
+          if(sum){hue=(hue+dh/sum*.3+360)%360;sat=clamp(sat*(1+ds/sum/100));lum=clamp(lum+dl/sum/100*.3);}
+        }
+        sat=clamp(sat*(1+vibrance*(1-sat)*skinProtection)*saturation);
+        if(sat===0){r=g=b=lum;}
+        else{
+          const q=lum<.5?lum*(1+sat):lum+sat-lum*sat,a=2*lum-q;
+          r=hueChannel(a,q,hue/360+1/3);g=hueChannel(a,q,hue/360);b=hueChannel(a,q,hue/360-1/3);
+        }
+      }
+      output[i]=r*255;output[i+1]=g*255;output[i+2]=b*255;output[i+3]=input[i+3];
+    }
+    // 分離式方框模糊，每一階段為 O(像素數)，避免大半徑時卡住。
+    function blur(src,radius){
+      const tmp=new Uint8ClampedArray(src.length),dst=new Uint8ClampedArray(src.length),span=radius*2+1;
+      for(let y=0;y<h;y++){
+        const row=y*w;let sr=0,sg=0,sb=0;
+        for(let dx=-radius;dx<=radius;dx++){
+          const at=(row+(dx<0?0:dx>=w?w-1:dx))*4;
+          sr+=src[at];sg+=src[at+1];sb+=src[at+2];
+        }
+        for(let x=0;x<w;x++){
+          const at=(row+x)*4;tmp[at]=sr/span;tmp[at+1]=sg/span;tmp[at+2]=sb/span;
+          const next=x+radius+1,previous=x-radius;
+          const a=(row+(next>=w?w-1:next))*4,b=(row+(previous<0?0:previous))*4;
+          sr+=src[a]-src[b];sg+=src[a+1]-src[b+1];sb+=src[a+2]-src[b+2];
+        }
+      }
+      for(let x=0;x<w;x++){
+        let sr=0,sg=0,sb=0;
+        for(let dy=-radius;dy<=radius;dy++){
+          const at=((dy<0?0:dy>=h?h-1:dy)*w+x)*4;
+          sr+=tmp[at];sg+=tmp[at+1];sb+=tmp[at+2];
+        }
+        for(let y=0;y<h;y++){
+          const at=(y*w+x)*4;dst[at]=sr/span;dst[at+1]=sg/span;dst[at+2]=sb/span;
+          const next=y+radius+1,previous=y-radius;
+          const a=((next>=h?h-1:next)*w+x)*4,b=((previous<0?0:previous)*w+x)*4;
+          sr+=tmp[a]-tmp[b];sg+=tmp[a+1]-tmp[b+1];sb+=tmp[a+2]-tmp[b+2];
+        }
+      }
+      return dst;
+    }
+    const luminance=(arr,i)=>(.2126*arr[i]+.7152*arr[i+1]+.0722*arr[i+2])/255;
+    if(p.denoise){
+      const soft=blur(output,2),amount=p.denoise/100*.88;
+      for(let i=0;i<output.length;i+=4){
+        const edge=Math.abs(luminance(output,i)-luminance(soft,i));
+        const blend=amount/(1+edge*22);
+        for(let c=0;c<3;c++)output[i+c]=output[i+c]*(1-blend)+soft[i+c]*blend;
+      }
+    }
+    if(p.sharpen){
+      const soft=blur(output,1),amount=p.sharpen/100*1.6;
+      for(let i=0;i<output.length;i+=4)for(let c=0;c<3;c++)output[i+c]+=amount*(output[i+c]-soft[i+c]);
+    }
+    function localDetail(value,radius,amplitude,midtone){
+      if(!value)return;
+      const soft=blur(output,radius),amount=value/100*amplitude;
+      for(let i=0;i<output.length;i+=4){
+        const lum=luminance(output,i),difference=(lum-luminance(soft,i))*255;
+        const adjustment=difference*amount*(midtone?4*lum*(1-lum):1);
+        for(let c=0;c<3;c++)output[i+c]+=adjustment;
+      }
+    }
+    localDetail(p.texture,3,1.2,false);
+    localDetail(p.clarity,Math.max(3,Math.round(Math.min(w,h)/90)),1.8,true);
+    if(p.vignette){
+      const amount=p.vignette/100;
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        const nx=(x+.5)/w*2-1,ny=(y+.5)/h*2-1;
+        const weight=smooth(.12,.95,(nx*nx+ny*ny)/2);
+        const i=(y*w+x)*4;
+        for(let c=0;c<3;c++)output[i+c]=amount>=0?output[i+c]*(1-amount*.85*weight):output[i+c]+(-amount)*.4*weight*255;
+      }
+    }
+    return output;
+  }
+  /* ENGINE_END */
+
+  function resolveReady(){
+    if(running||dirty||timer||applied!==revision)return;
+    for(const waiter of waiters.splice(0))error?waiter.reject(error):waiter.resolve();
+  }
+  function fail(err){
+    error=err instanceof Error?err:new Error(String(err));dirty=false;running=false;applied=revision;
+    stateText('調色失敗：'+error.message+'；請還原調色或更換照片。',true);
+    resolveReady();
+  }
+  function complete(result){
+    running=false;
+    if(result.id!==sourceId||result.version!==revision){if(dirty&&!timer)kick();resolveReady();return;}
+    if(result.error){fail(new Error(result.error));return;}
+    if(result.id===sourceId&&result.version===revision){
+      const pixels=new Uint8ClampedArray(result.pixels);
+      const output=document.createElement('canvas');output.width=result.width;output.height=result.height;
+      output.getContext('2d').putImageData(new ImageData(pixels,result.width,result.height),0,0);
+      processed=output;applied=revision;error=null;
+      stateText('照片調整已更新；PNG 與 MP4 會使用相同效果。');render();
+    }
+    if(dirty&&!timer)kick();
+    resolveReady();
+  }
+  try{
+    const code=`'use strict'; const processPhotoJob=${processPhotoJob.toString()};self.onmessage=e=>{const job=e.data;try{const pixels=processPhotoJob(job);self.postMessage({id:job.id,version:job.version,width:job.width,height:job.height,pixels:pixels.buffer},[pixels.buffer]);}catch(error){self.postMessage({id:job.id,version:job.version,error:error.message});}};`;
+    workerURL=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));worker=new Worker(workerURL);
+    worker.onmessage=e=>complete(e.data);
+    worker.onerror=()=>{worker.terminate();worker=null;running=false;dirty=true;stateText('改用相容處理模式，請稍候…');kick();};
+  }catch(err){worker=null;}
+
+  function kick(){
+    if(running||!dirty||!base)return;
+    dirty=false;running=true;
+    const pixels=base.data.slice();
+    const job={id:sourceId,version:revision,width:base.width,height:base.height,pixels:pixels.buffer,settings:{...values},hsl:hsl.map(b=>({...b}))};
+    stateText('正在更新照片，完成後即可下載…');
+    if(worker)worker.postMessage(job,[pixels.buffer]);
+    else setTimeout(()=>{try{const output=processPhotoJob(job);complete({...job,pixels:output.buffer});}catch(err){fail(err);}},0);
+  }
+  function requestUpdate(){
+    revision++;dirty=true;error=null;
+    clearTimeout(timer);
+    timer=setTimeout(()=>{timer=null;kick();resolveReady();},90);
+    if(!source)stateText('請先選擇或上傳照片，設定會保留。');
+    else stateText('正在準備更新照片…');
+  }
+  function observe(image){
+    if(image===source)return;
+    source=image;sourceId++;processed=null;base=null;error=null;applied=-1;
+    if(!image){revision++;dirty=false;applied=revision;resolveReady();return;}
+    try{
+      // 限制工作圖長邊，降低手機記憶體用量；輸出仍為 1080×1350。
+      const ratio=Math.min(1,1800/Math.max(image.width,image.height));
+      const working=document.createElement('canvas');
+      working.width=Math.max(1,Math.round(image.width*ratio));working.height=Math.max(1,Math.round(image.height*ratio));
+      const c=working.getContext('2d',{willReadFrequently:true});
+      c.fillStyle='#ffffff';c.fillRect(0,0,working.width,working.height);c.drawImage(image,0,0,working.width,working.height);
+      base=c.getImageData(0,0,working.width,working.height);
+      requestUpdate();
+    }catch(err){fail(err);}
+  }
+  const api={
+    mask:.7,
+    getImage(image){observe(image);return processed||image;},
+    ready(){
+      observe(background);
+      if(!source)return Promise.resolve();
+      if(error)return Promise.reject(error);
+      if(applied===revision&&!dirty&&!running&&!timer)return Promise.resolve();
+      clearTimeout(timer);timer=null;kick();
+      return new Promise((resolve,reject)=>waiters.push({resolve,reject}));
+    }
+  };
+  window.MorningPhotoEditor=api;
+
+  // 圖片下載也須等待最新照片運算，避免匯出上一次的調色。
+  const originalPNG=$('png').onclick;
+  $('png').onclick=async()=>{
+    if(busy)return;
+    $('png').disabled=true;
+    try{await api.ready();originalPNG();}catch(err){status('圖片調色尚未完成：'+err.message,true);}
+    finally{$('png').disabled=busy;}
+  };
+  syncHSL();render();
 })();
 </script>
 
