@@ -9,6 +9,12 @@
 :root{color-scheme:light;--ink:#243c34;--accent:#32634e;--muted:#68776d;--line:#dedfd6;--paper:#fffefa}
 *{box-sizing:border-box}body{margin:0;background:#f5f2eb;color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Noto Sans TC",sans-serif}header{max-width:1180px;margin:auto;padding:30px 22px 18px}h1{font-family:serif;font-size:32px;margin:4px 0}h2{font-size:19px;margin:0 0 14px}p{margin:7px 0}.eyebrow{font-size:12px;letter-spacing:3px;color:var(--accent)}.sub,.hint{color:var(--muted);font-size:13px}.layout{max-width:1180px;margin:auto;padding:0 22px 36px;display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,430px);gap:24px;align-items:start}.preview{position:sticky;top:20px;background:#e7e8dd;border-radius:24px;padding:22px}.preview canvas{display:block;width:100%;max-width:510px;height:auto;aspect-ratio:4/5;margin:auto;border-radius:12px;box-shadow:0 15px 45px #23392c26;touch-action:none}.preview-bar{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:14px}.panel{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:21px;margin-bottom:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:1;min-width:0}.row .small{flex:0 0 auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:block;margin:10px 0;font-size:14px;font-weight:600}input:not([type=checkbox]),select,textarea,button,.upload{font:inherit}input[type=text],textarea,select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink);font-size:16px}textarea{resize:vertical;min-height:94px}button,.upload{cursor:pointer;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:white;color:var(--ink);font-size:14px;font-weight:600;text-align:center;display:inline-block}button:hover,.upload:hover{background:#f0f4eb}button:disabled{opacity:.5;cursor:wait}button.primary{background:var(--accent);color:white;border-color:var(--accent)}button.primary:hover{background:#254f3e}button.wide{width:100%;margin-top:10px}.tabs{display:flex;gap:6px;margin:14px 0}.tabs button{flex:1;padding:9px 4px}.tabs button[aria-pressed=true]{background:#e8efe6;border-color:#87a38a}.slider{display:flex;align-items:center;gap:8px}input[type=range]{width:100%;accent-color:var(--accent)}input[type=color]{width:100%;height:39px;border:1px solid var(--line);padding:3px;border-radius:8px;background:white}input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);vertical-align:middle;margin-right:7px}output{font-size:12px;min-width:40px;text-align:right}.check{display:flex;align-items:center;font-size:14px;margin:12px 0}.check input{flex:none}a{color:var(--accent)}progress{width:100%;accent-color:var(--accent)}#status{font-size:14px;min-height:26px;margin-top:12px;white-space:pre-wrap}#status[data-error=true]{color:#a33428}#result{display:none;margin-top:12px;background:#eff4e8;border-radius:12px;padding:12px}#result a{font-weight:700}#result video{width:100%;max-height:260px;margin-top:8px}footer{padding:12px 22px 32px;max-width:1180px;margin:auto;font-size:12px;color:var(--muted)}:focus-visible{outline:3px solid #95ad71;outline-offset:3px}[hidden]{display:none!important}@media(max-width:800px){header{padding-top:22px}.layout{grid-template-columns:1fr;padding:0 14px 24px;gap:16px}.preview{position:relative;top:auto;padding:16px}.preview canvas{max-width:420px}.panel{padding:18px}h1{font-size:28px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}}
 </style>
+<style>
+/* 四段文字各自記錄對齊方式；控制列位於文字大小正下方。 */
+.text-alignment{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px}
+.text-alignment button{min-height:44px;padding:9px 6px}
+.text-alignment button[aria-pressed=true]{background:#e5eedf;border-color:#87a38a}
+</style>
 </head>
 <body>
 <header><div class="eyebrow">A LITTLE LIGHT, EVERY MORNING</div><h1>晨光・早安圖製作所</h1><span class="organization-subtitle">社團法人中華民國天元慈善功德會</span><p class="sub">把今天的溫柔，分享給在乎的人。</p></header>
@@ -33,6 +39,11 @@
 <div class="tabs" role="group" aria-label="選擇文字與書寫方向"><div class="text-layer-column"><button type="button" data-layer="title" aria-pressed="true">主標題</button><button type="button" id="writing_title" class="writing-toggle" data-writing-layer="title" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="message" aria-pressed="false">小語</button><button type="button" id="writing_message" class="writing-toggle" data-writing-layer="message" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="signature" aria-pressed="false">署名</button><button type="button" id="writing_signature" class="writing-toggle" data-writing-layer="signature" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="date" aria-pressed="false">日期</button><button type="button" id="writing_date" class="writing-toggle" data-writing-layer="date" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div></div><p class="hint writing-direction-hint">四段文字可各自切換；直書由上往下、由右向左，手動換行會另起一欄。</p>
 <label class="field" for="font">字型</label><select id="font"><option value="serif">典雅明體</option><option value="sans-serif">清新黑體</option></select>
 <label class="field" for="size">文字大小</label><div class="slider"><input id="size" type="range" min="20" max="110"><output id="sizeValue"></output></div>
+<div class="text-alignment" role="group" aria-label="目前文字的水平對齊">
+  <button type="button" data-text-align="left" aria-pressed="false">靠左</button>
+  <button type="button" data-text-align="center" aria-pressed="true">置中</button>
+  <button type="button" data-text-align="right" aria-pressed="false">靠右</button>
+</div>
 <div class="grid"><div><label class="field" for="x">左右位置</label><div class="slider"><input id="x" type="range" min="0" max="100"><output id="xValue"></output></div></div><div><label class="field" for="y">上下位置</label><div class="slider"><input id="y" type="range" min="0" max="100"><output id="yValue"></output></div></div></div>
 <div class="grid"><div><label class="field" for="fill">文字顏色</label><input id="fill" type="color"></div><div><label class="field" for="stroke">邊框顏色</label><input id="stroke" type="color"></div></div>
 <label class="field" for="strokeWidth">邊框粗細（0 表示關閉）</label><div class="slider"><input id="strokeWidth" type="range" min="0" max="8" step="0.5"><output id="strokeWidthValue"></output></div>
@@ -80,7 +91,7 @@ const categories=[
  ['日光雲影',['1470071459604-3b5ec3a7fe05','1500534623283-312aade485b7','1469474968028-56623f02e42e']]
 ];
 const layers={};
-for(const [key,size,y] of [['title',65,34],['message',43,53],['signature',29,79],['date',26,84]]) layers[key]={size,x:50,y,fill:'#ffffff',stroke:'#243b32',strokeWidth:1,shadow:true,shadowColor:'#15251e',font:'serif',vertical:false};
+for(const [key,size,y] of [['title',65,34],['message',43,53],['signature',29,79],['date',26,84]]) layers[key]={size,x:50,y,fill:'#ffffff',stroke:'#243b32',strokeWidth:1,shadow:true,shadowColor:'#15251e',font:'serif',vertical:false,align:'center'};
 let active='title', background=null, imageTicket=0, photoIndex=-1, busy=false, cancelRequested=false, previewAudio=null, ffmpeg=null, resultURL=null, drag=null;
 let bounds={};
 function status(text,error=false){$('status').textContent=text;$('status').dataset.error=String(error);}
@@ -174,7 +185,7 @@ function drawGreetingLayer(key,text,style) {
   // 共用命中框：切換直／橫書後，觸控拖曳仍依新文字區塊運作。
   bounds[key]={x:x-width/2-12,y:y-height/2-8,w:width+24,h:height+16};
   ctx.save();
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  ctx.textAlign=layout.vertical?'center':(style.align||'center');ctx.textBaseline='middle';ctx.lineJoin='round';
   ctx.fillStyle=style.fill;ctx.strokeStyle=style.stroke;ctx.lineWidth=style.strokeWidth*2;
   if(style.shadow) {
     ctx.shadowColor=style.shadowColor;ctx.shadowBlur=size*.2;ctx.shadowOffsetY=size*.06;
@@ -195,7 +206,8 @@ function drawGreetingLayer(key,text,style) {
       });
     });
   } else {
-    layout.lines.forEach((line,index)=>paint(line,x,y-height/2+advance*(index+.5)));
+    const lineX=style.align==='left'?x-width/2:style.align==='right'?x+width/2:x;
+    layout.lines.forEach((line,index)=>paint(line,lineX,y-height/2+advance*(index+.5)));
   }
   ctx.restore();
 }
@@ -210,8 +222,27 @@ function render(){
  bounds={};
  for(const key of Object.keys(layers))drawGreetingLayer(key,$(key).value,layers[key]);
 }
-function sync(){const s=layers[active];for(const key of ['size','x','y','fill','stroke','strokeWidth','shadowColor','font'])$(key).value=s[key];$('shadow').checked=s.shadow;for(const key of ['size','x','y','strokeWidth'])$(key+'Value').value=s[key]+(['x','y'].includes(key)?'%':'');document.querySelectorAll('[data-layer]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layer===active)));}
+function sync(){const s=layers[active];for(const key of ['size','x','y','fill','stroke','strokeWidth','shadowColor','font'])$(key).value=s[key];$('shadow').checked=s.shadow;for(const key of ['size','x','y','strokeWidth'])$(key+'Value').value=s[key]+(['x','y'].includes(key)?'%':'');document.querySelectorAll('[data-layer]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layer===active)));syncTextAlignment();}
 function selectLayer(key){active=key;sync();}
+// 對齊到畫布邊界，同時對齊多行文字；後續仍可用拖曳或位置滑桿微調。
+function syncTextAlignment(){
+  const align=layers[active].align||'center';
+  document.querySelectorAll('[data-text-align]').forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.textAlign===align));
+  });
+}
+document.querySelectorAll('[data-text-align]').forEach(button=>{
+  button.onclick=()=>{
+    if(busy)return;
+    const align=button.dataset.textAlign;
+    layers[active].align=align;
+    layers[active].x=align==='left'?0:align==='right'?100:50;
+    // 選回文字模式，避免對齊後拖曳到背景。
+    document.querySelector('[data-layer="'+active+'"]').click();
+    sync();render();
+  };
+});
+
 document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>selectLayer(b.dataset.layer));
 for(const key of ['size','x','y','fill','stroke','strokeWidth','shadow','shadowColor','font'])$(key).oninput=()=>{layers[active][key]=key==='shadow'?$(key).checked:['size','x','y','strokeWidth'].includes(key)?Number($(key).value):$(key).value;sync();render();};
 for(const key of Object.keys(layers))$(key).oninput=render;
