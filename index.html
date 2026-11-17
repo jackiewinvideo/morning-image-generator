@@ -30,7 +30,7 @@
 <label class="field" for="message">溫馨小語（支援換行）</label><textarea id="message" maxlength="400">把日子過成喜歡的模樣，
 讓每一個平凡，都閃著微光。</textarea>
 <div class="grid"><div><label class="field" for="signature">署名</label><input id="signature" type="text" maxlength="80" placeholder="例如：祝福你的 美玲"></div><div><label class="field" for="date">日期（可編輯或清空）</label><input id="date" type="text" maxlength="60"></div></div>
-<div class="tabs" role="group" aria-label="選擇要調整的文字"><button data-layer="title" aria-pressed="true">主標題</button><button data-layer="message" aria-pressed="false">小語</button><button data-layer="signature" aria-pressed="false">署名</button><button data-layer="date" aria-pressed="false">日期</button></div>
+<div class="tabs" role="group" aria-label="選擇文字與書寫方向"><div class="text-layer-column"><button type="button" data-layer="title" aria-pressed="true">主標題</button><button type="button" id="writing_title" class="writing-toggle" data-writing-layer="title" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="message" aria-pressed="false">小語</button><button type="button" id="writing_message" class="writing-toggle" data-writing-layer="message" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="signature" aria-pressed="false">署名</button><button type="button" id="writing_signature" class="writing-toggle" data-writing-layer="signature" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div><div class="text-layer-column"><button type="button" data-layer="date" aria-pressed="false">日期</button><button type="button" id="writing_date" class="writing-toggle" data-writing-layer="date" aria-pressed="false">直書／橫書<small class="writing-state">目前：橫書</small></button></div></div><p class="hint writing-direction-hint">四段文字可各自切換；直書由上往下、由右向左，手動換行會另起一欄。</p>
 <label class="field" for="font">字型</label><select id="font"><option value="serif">典雅明體</option><option value="sans-serif">清新黑體</option></select>
 <label class="field" for="size">文字大小</label><div class="slider"><input id="size" type="range" min="20" max="110"><output id="sizeValue"></output></div>
 <div class="grid"><div><label class="field" for="x">左右位置</label><div class="slider"><input id="x" type="range" min="0" max="100"><output id="xValue"></output></div></div><div><label class="field" for="y">上下位置</label><div class="slider"><input id="y" type="range" min="0" max="100"><output id="yValue"></output></div></div></div>
@@ -80,7 +80,7 @@ const categories=[
  ['日光雲影',['1470071459604-3b5ec3a7fe05','1500534623283-312aade485b7','1469474968028-56623f02e42e']]
 ];
 const layers={};
-for(const [key,size,y] of [['title',65,34],['message',43,53],['signature',29,79],['date',26,84]]) layers[key]={size,x:50,y,fill:'#ffffff',stroke:'#243b32',strokeWidth:1,shadow:true,shadowColor:'#15251e',font:'serif'};
+for(const [key,size,y] of [['title',65,34],['message',43,53],['signature',29,79],['date',26,84]]) layers[key]={size,x:50,y,fill:'#ffffff',stroke:'#243b32',strokeWidth:1,shadow:true,shadowColor:'#15251e',font:'serif',vertical:false};
 let active='title', background=null, imageTicket=0, photoIndex=-1, busy=false, cancelRequested=false, previewAudio=null, ffmpeg=null, resultURL=null, drag=null;
 let bounds={};
 function status(text,error=false){$('status').textContent=text;$('status').dataset.error=String(error);}
@@ -122,6 +122,84 @@ function wrapped(text,maxWidth){
  for(const paragraph of text.split('\n')){let line='';for(const ch of Array.from(paragraph)){if(line && ctx.measureText(line+ch).width>maxWidth){result.push(line);line=ch;}else line+=ch;}result.push(line);}
  return result;
 }
+// 文字層共用排版：直書由上而下、欄位由右向左；換行會另起一欄。
+const verticalTextSegmenter = typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter('zh-Hant', {granularity:'grapheme'}) : null;
+function greetingCharacters(text) {
+  return verticalTextSegmenter
+    ? Array.from(verticalTextSegmenter.segment(text), item => item.segment)
+    : Array.from(text);
+}
+function layoutGreetingText(text, style, key) {
+  let size=style.size, lines, columns, width, height, advance, columnAdvance;
+  const paragraphs=text.replace(/\r\n?/g,'\n').split('\n');
+  const verticalParagraphs=style.vertical?paragraphs.map(greetingCharacters):null;
+  do {
+    ctx.font=`${key==='title'?600:400} ${size}px ${style.font}`;
+    if(style.vertical) {
+      advance=size*1.35;
+      columnAdvance=size*1.5;
+      const capacity=Math.max(1,Math.floor(H*.88/advance));
+      columns=[];
+      for(const characters of verticalParagraphs) {
+        if(!characters.length)columns.push([]);
+        for(let start=0;start<characters.length;start+=capacity)
+          columns.push(characters.slice(start,start+capacity));
+      }
+      width=columns.length*columnAdvance;
+      height=Math.max(1,...columns.map(column=>column.length))*advance;
+    } else {
+      lines=wrapped(text,W*.88);
+      advance=size*1.5;
+      width=Math.max(...lines.map(line=>ctx.measureText(line).width));
+      height=lines.length*advance;
+    }
+    if((width<=W*.88&&height<=H*.88)||size<=1)break;
+    size--;
+  } while(size>0);
+  return {vertical:Boolean(style.vertical),size,lines,columns,width,height,advance,columnAdvance};
+}
+const verticalPunctuation={
+  '，':'︐','、':'︑','。':'︒','：':'︓','；':'︔','！':'︕','？':'︖',
+  '（':'︵','）':'︶','(':'︵',')':'︶','｛':'︷','｝':'︸',
+  '「':'﹁','」':'﹂','『':'﹃','』':'﹄','【':'︻','】':'︼',
+  '《':'︽','》':'︾','〈':'︿','〉':'﹀'
+};
+function drawGreetingLayer(key,text,style) {
+  if(!text.trim())return;
+  const layout=layoutGreetingText(text,style,key);
+  const {width,height,size,advance}=layout;
+  const x=Math.min(W-width/2-24,Math.max(width/2+24,W*style.x/100));
+  const y=Math.min(H-height/2-24,Math.max(height/2+24,H*style.y/100));
+  // 共用命中框：切換直／橫書後，觸控拖曳仍依新文字區塊運作。
+  bounds[key]={x:x-width/2-12,y:y-height/2-8,w:width+24,h:height+16};
+  ctx.save();
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  ctx.fillStyle=style.fill;ctx.strokeStyle=style.stroke;ctx.lineWidth=style.strokeWidth*2;
+  if(style.shadow) {
+    ctx.shadowColor=style.shadowColor;ctx.shadowBlur=size*.2;ctx.shadowOffsetY=size*.06;
+  }
+  function paint(glyph,xx,yy) {
+    if(style.strokeWidth)ctx.strokeText(glyph,xx,yy);
+    ctx.fillText(glyph,xx,yy);
+  }
+  if(layout.vertical) {
+    layout.columns.forEach((column,index)=>{
+      const xx=x+width/2-layout.columnAdvance*(index+.5);
+      column.forEach((character,row)=>{
+        const yy=y-height/2+advance*(row+.5);
+        const glyph=verticalPunctuation[character]||character;
+        if(/[—–─…⋯_=]/u.test(character)&&character.length===1) {
+          ctx.save();ctx.translate(xx,yy);ctx.rotate(Math.PI/2);paint(glyph,0,0);ctx.restore();
+        } else paint(glyph,xx,yy);
+      });
+    });
+  } else {
+    layout.lines.forEach((line,index)=>paint(line,x,y-height/2+advance*(index+.5)));
+  }
+  ctx.restore();
+}
+
 function render(){
  ctx.clearRect(0,0,W,H);
  if(background){const r=Math.max(W/background.width,H/background.height),w=background.width*r,h=background.height*r;ctx.drawImage(background,(W-w)/2,(H-h)/2,w,h);}
@@ -130,19 +208,7 @@ function render(){
  const shade=ctx.createLinearGradient(0,0,0,H);shade.addColorStop(0,'rgba(7,22,18,.24)');shade.addColorStop(.4,'rgba(7,22,18,.40)');shade.addColorStop(1,'rgba(7,22,18,.69)');ctx.fillStyle=shade;ctx.fillRect(0,0,W,H);
  const glow=ctx.createRadialGradient(W*.15,H*.1,0,W*.15,H*.1,W);glow.addColorStop(0,'rgba(255,226,160,.18)');glow.addColorStop(1,'rgba(255,226,160,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
  bounds={};
- for(const key of Object.keys(layers)){
-  const text=$(key).value;if(!text.trim())continue;
-  const s=layers[key];let size=s.size,lines;
-  do{ctx.font=`${key==='title'?600:400} ${size}px ${s.font}`;lines=wrapped(text,W*.88);if(lines.length*size*1.5<=H*.88||size<=8)break;size--;}while(size>0);
-  const lineHeight=size*1.5,height=lines.length*lineHeight;
-  const width=Math.max(...lines.map(t=>ctx.measureText(t).width));
-  const x=Math.min(W-width/2-24,Math.max(width/2+24,W*s.x/100));
-  const y=Math.min(H-height/2-24,Math.max(height/2+24,H*s.y/100));
-  bounds[key]={x:x-width/2-12,y:y-height/2-8,w:width+24,h:height+16};
-  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';ctx.fillStyle=s.fill;ctx.strokeStyle=s.stroke;ctx.lineWidth=s.strokeWidth*2;
-  if(s.shadow){ctx.shadowColor=s.shadowColor;ctx.shadowBlur=size*.2;ctx.shadowOffsetY=size*.06;}
-  lines.forEach((line,i)=>{const yy=y-height/2+lineHeight*(i+.5);if(s.strokeWidth)ctx.strokeText(line,x,yy);ctx.fillText(line,x,yy);});ctx.restore();
- }
+ for(const key of Object.keys(layers))drawGreetingLayer(key,$(key).value,layers[key]);
 }
 function sync(){const s=layers[active];for(const key of ['size','x','y','fill','stroke','strokeWidth','shadowColor','font'])$(key).value=s[key];$('shadow').checked=s.shadow;for(const key of ['size','x','y','strokeWidth'])$(key+'Value').value=s[key]+(['x','y'].includes(key)?'%':'');document.querySelectorAll('[data-layer]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layer===active)));}
 function selectLayer(key){active=key;sync();}
@@ -409,35 +475,7 @@ body>footer{display:none}
     glow.addColorStop(1, 'rgba(255,226,160,0)');
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
     bounds = {};
-    for (const key of Object.keys(layers)) {
-      const text = $(key).value;
-      if (!text.trim()) continue;
-      const s = layers[key];
-      let size = s.size, lines;
-      do {
-        ctx.font = `${key === 'title' ? 600 : 400} ${size}px ${s.font}`;
-        lines = wrapped(text, W*.88);
-        if (lines.length * size * 1.5 <= H*.88 || size <= 8) break;
-        size--;
-      } while (size > 0);
-      const lineHeight = size*1.5, height = lines.length*lineHeight;
-      const width = Math.max(...lines.map(line => ctx.measureText(line).width));
-      const x = Math.min(W-width/2-24, Math.max(width/2+24, W*s.x/100));
-      const y = Math.min(H-height/2-24, Math.max(height/2+24, H*s.y/100));
-      bounds[key] = { x:x-width/2-12, y:y-height/2-8, w:width+24, h:height+16 };
-      ctx.save();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-      ctx.fillStyle = s.fill; ctx.strokeStyle = s.stroke; ctx.lineWidth = s.strokeWidth*2;
-      if (s.shadow) {
-        ctx.shadowColor = s.shadowColor; ctx.shadowBlur = size*.2; ctx.shadowOffsetY = size*.06;
-      }
-      lines.forEach((line, index) => {
-        const yy = y-height/2+lineHeight*(index+.5);
-        if (s.strokeWidth) ctx.strokeText(line, x, yy);
-        ctx.fillText(line, x, yy);
-      });
-      ctx.restore();
-    }
+    for (const key of Object.keys(layers)) drawGreetingLayer(key,$(key).value,layers[key]);
   };
   // 舊程式使用直接指定的事件函式，必須重新綁定至新版 render。
   for (const key of Object.keys(layers)) $(key).oninput = () => render();
@@ -1323,6 +1361,43 @@ header .organization-subtitle{display:block;min-width:0;margin:0;color:#526b5d;f
     finally{$('png').disabled=busy;}
   };
   syncHSL();render();
+})();
+</script>
+
+<style>
+/* 每段文字的直／橫書按鈕，放在對應文字選擇鈕正下方。 */
+.tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-items:start}
+.text-layer-column{min-width:0;display:flex;flex-direction:column;gap:5px}
+.tabs .text-layer-column>button{width:100%;min-height:44px;padding:8px 2px}
+.tabs .writing-toggle{font-size:11px;line-height:1.4;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px}
+.writing-toggle .writing-state{font-size:10px;font-weight:400;color:var(--muted)}
+.tabs .writing-toggle[aria-pressed=true]{background:#e5eedf;border-color:#87a38a}
+.writing-direction-hint{font-size:12px;margin:0 0 10px}
+</style>
+<script>
+(() => {
+  'use strict';
+  const labels={title:'主標題',message:'小語',signature:'署名',date:'日期'};
+  function syncWritingButtons() {
+    for(const key of Object.keys(labels)) {
+      const button=document.getElementById('writing_'+key);
+      const vertical=Boolean(layers[key].vertical);
+      button.setAttribute('aria-pressed',String(vertical));
+      button.setAttribute('aria-label',labels[key]+'直書模式，目前'+(vertical?'開啟':'關閉')+'；點選切換為'+(vertical?'橫書':'直書'));
+      button.querySelector('.writing-state').textContent='目前：'+(vertical?'直書':'橫書');
+    }
+  }
+  document.querySelectorAll('[data-writing-layer]').forEach(button=>{
+    button.onclick=()=>{
+      if(busy)return;
+      const key=button.dataset.writingLayer;
+      // 同時選取該文字層，沿用字型、顏色、位置及文字拖曳操作。
+      document.querySelector('[data-layer="'+key+'"]').click();
+      layers[key].vertical=!layers[key].vertical;
+      syncWritingButtons();render();
+    };
+  });
+  syncWritingButtons();
 })();
 </script>
 
